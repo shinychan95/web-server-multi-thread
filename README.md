@@ -7,5 +7,4 @@
 3. make
 
 ## Building
-1. git clone한 경우, bin 폴더와 include 폴더 따로 만들어줘야 한다.
-2. `make`
+1. `make`
