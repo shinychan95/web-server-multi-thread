@@ -22,6 +22,9 @@ int main(int argc, char *argv[])
 	int clnt_adr_size;
 	char buf[BUF_SIZE];
 	pthread_t t_id;	
+
+	int thr_id;
+
 	if (argc !=2) {
 		printf("Usage : %s <port>\n", argv[0]);
 		exit(1);
@@ -42,7 +45,13 @@ int main(int argc, char *argv[])
 		clnt_adr_size = sizeof(clnt_adr);
 		clnt_sock = accept(serv_sock, (struct sockaddr*)&clnt_adr, &clnt_adr_size);
 		printf("Connection Request : %s:%d\n", inet_ntoa(clnt_adr.sin_addr), ntohs(clnt_adr.sin_port));
-		pthread_create(&t_id, NULL, (void*)request_handler, &clnt_sock);
+		thr_id = pthread_create(&t_id, NULL, (void*)request_handler, &clnt_sock);
+		if (thr_id < 0) {
+			perror("thread create error : ");
+			exit(0);
+		}
+
+		// t_id에 해당하는 스레드가 종료되면 자원을 해제한다. 
 		pthread_detach(t_id);
 	}
 	close(serv_sock);
@@ -59,10 +68,19 @@ int* request_handler(void *arg)
 	char method[10];
 	char ct[15];
 	char file_name[30];
-  
+	char file_path[30] = "example/";
+
+	printf("Request Handler Function Call\n");
+	
+	// fdopen - 파일 기술자에서 파일 포인터를 생성하는 함수
 	clnt_read = fdopen(clnt_sock, "r");
 	clnt_write = fdopen(dup(clnt_sock), "w");
-	fgets(req_line, SMALL_BUF, clnt_read);	
+
+	// fgets - 파일 포인터가 가리키는 파일에서 정수 n으로 지정한 길이보다 하나 적게 문자열을 읽어 s에 저장합니다
+	fgets(req_line, SMALL_BUF, clnt_read);
+	printf("request line: %s.\n", req_line);
+
+	// strstr - 문자열에서 특정 문자열의 시작 위치를 알려주는 함수
 	if (strstr(req_line, "HTTP/") == NULL)
 	{
 		send_error(clnt_write);
@@ -71,8 +89,13 @@ int* request_handler(void *arg)
 		return NULL;
 	 }
 	
+	// strtok - 문자열에서 token을 뽑아내는 함수. 두번째 수행부터는 NULL을 넣고, 더이상 없으면 NULL 반환
 	strcpy(method, strtok(req_line, " /"));
+	printf("method is: %s.\n", method);
+
 	strcpy(file_name, strtok(NULL, " /"));
+	printf("file name is: %s.\n", file_name);
+
 	strcpy(ct, content_type(file_name));
 	if (strcmp(method, "GET") != 0)
 	{
@@ -80,10 +103,12 @@ int* request_handler(void *arg)
 		fclose(clnt_read);
 		fclose(clnt_write);
 		return NULL;
-	 }
+	}
+
+	strcat(file_path, file_name);
 
 	fclose(clnt_read);
-	send_data(clnt_write, ct, file_name); 
+	send_data(clnt_write, ct, file_path); 
 }
 
 void send_data(FILE* fp, char* ct, char* file_name)
@@ -95,7 +120,11 @@ void send_data(FILE* fp, char* ct, char* file_name)
 	char buf[BUF_SIZE];
 	FILE* send_file;
 	int file_size;
+
+	printf("Send Data Function Call\n");
 	
+	printf("file name: %s\n", file_name);
+
 	sprintf(cnt_type, "Content-type:%s\r\n\r\n", ct);
 	send_file = fopen(file_name, "r");
 	if (send_file == NULL)
@@ -104,7 +133,7 @@ void send_data(FILE* fp, char* ct, char* file_name)
 		return;
 	}
 
-	 printf("file_name: %s \n", file_name);
+	printf("file_name: %s \n", file_name);
 
 	// GET file size and construct header for Content-length
 	fseek(send_file, 0, SEEK_END);
@@ -132,10 +161,13 @@ char* content_type(char* file)
 {
 	char extension[SMALL_BUF];
 	char file_name[SMALL_BUF];
+
+	printf("Content Type Function Call\n");
+
 	strcpy(file_name, file);
 	strtok(file_name, ".");
 	strcpy(extension, strtok(NULL, "."));
-	
+
 	if (!strcmp(extension, "html") || !strcmp(extension, "htm")) 
 		return "text/html";
 	else
@@ -152,6 +184,8 @@ void send_error(FILE* fp)
 	       "<body><font size=+5><br>���� �߻�! ��û ���ϸ� �� ��û ��� Ȯ��!"
 		   "</font></body></html>";
 
+	printf("Send Error Function Call\n");
+
 	fputs(protocol, fp);
 	fputs(server, fp);
 	fputs(cnt_len, fp);
@@ -160,7 +194,9 @@ void send_error(FILE* fp)
 }
 
 void error_handling(char* message)
-{
+{	
+	printf("Error Handling Function Call\n");
+
 	fputs(message, stderr);
 	fputc('\n', stderr);
 	exit(1);
