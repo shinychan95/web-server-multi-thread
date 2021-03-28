@@ -6,7 +6,7 @@
 CC := gcc
 
 # Compile options
-CFLAGS := -W -Wall -O2
+CFLAGS := -W -Wall -O2 -D_REENTRANT
 
 # Linker options
 LDFLAGS := -pthread  -lpthread
