@@ -109,6 +109,7 @@ int* request_handler(void *arg)
 
 	fclose(clnt_read);
 	send_data(clnt_write, ct, file_path); 
+	printf("\n\n request done! \n\n");
 }
 
 void send_data(FILE* fp, char* ct, char* file_name)
@@ -126,6 +127,7 @@ void send_data(FILE* fp, char* ct, char* file_name)
 	printf("file name: %s\n", file_name);
 
 	sprintf(cnt_type, "Content-type:%s\r\n\r\n", ct);
+
 	send_file = fopen(file_name, "r");
 	if (send_file == NULL)
 	{
@@ -147,11 +149,21 @@ void send_data(FILE* fp, char* ct, char* file_name)
 	fputs(cnt_len, fp);
 	fputs(cnt_type, fp);
 
-	/* ��û ������ ���� */
+	/* ��û ������ ���� 
 	while (fgets(buf, BUF_SIZE, send_file) != NULL) 
 	{
 		fputs(buf, fp);
 		fflush(fp);
+	}*/
+
+	int read_cnt = 0;
+	int read_size = 0;
+
+	while (read_size < file_size)
+	{
+		read_cnt = fread((void*)buf, 1, BUF_SIZE, send_file);
+		read_size += read_cnt;
+		fwrite(buf, 1, read_cnt, fp);
 	}
 	fflush(fp);
 	fclose(fp);
@@ -168,8 +180,15 @@ char* content_type(char* file)
 	strtok(file_name, ".");
 	strcpy(extension, strtok(NULL, "."));
 
+	printf("	extension is %s\n", extension);
+
 	if (!strcmp(extension, "html") || !strcmp(extension, "htm")) 
 		return "text/html";
+	else if (!strcmp(extension, "jpg") || !strcmp(extension, "jpeg"))	// added
+		{
+			printf("\nhi im in conternt type\n");
+			return "image/jpeg";
+		}
 	else
 		return "text/plain";
 }
@@ -180,9 +199,12 @@ void send_error(FILE* fp)
 	char server[] = "Server:Linux Web Server \r\n";
 	char cnt_len[] = "Content-length:2048\r\n";
 	char cnt_type[] = "Content-type:text/html\r\n\r\n";
+
+	/*
 	char content[] = "<html><head><title>NETWORK</title></head>"
-	       "<body><font size=+5><br>���� �߻�! ��û ���ϸ� �� ��û ��� Ȯ��!"
+	       "<body><font size=+5><br><���� �߻�! ��û ���ϸ� �� ��û ��� Ȯ��!>"
 		   "</font></body></html>";
+	*/
 
 	printf("Send Error Function Call\n");
 
