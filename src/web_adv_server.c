@@ -9,9 +9,6 @@
 #define BUF_SIZE 1024
 #define SMALL_BUF 100
 
-#define TRUE 1
-#define FALSE 0
-
 int* request_handler(void* arg);
 void send_data(FILE* fp, char* ct, char* file_name);
 char* content_type(char* file);
@@ -22,11 +19,11 @@ int main(int argc, char *argv[])
 {
 	int serv_sock, clnt_sock;
 	struct sockaddr_in serv_adr, clnt_adr;
-	int option;
-	socklen_t optlen;
 	int clnt_adr_size;
 	char buf[BUF_SIZE];
 	pthread_t t_id;	
+
+	int thr_id;
 
 	if (argc !=2) {
 		printf("Usage : %s <port>\n", argv[0]);
@@ -34,10 +31,6 @@ int main(int argc, char *argv[])
 	}
 	
 	serv_sock = socket(PF_INET, SOCK_STREAM, 0);
-	optlen = sizeof(option);
-	option = TRUE;	
-	setsockopt(serv_sock, SOL_SOCKET, SO_REUSEADDR, &option, optlen);
-
 	memset(&serv_adr, 0, sizeof(serv_adr));
 	serv_adr.sin_family = AF_INET;
 	serv_adr.sin_addr.s_addr = htonl(INADDR_ANY);
@@ -52,7 +45,12 @@ int main(int argc, char *argv[])
 		clnt_adr_size = sizeof(clnt_adr);
 		clnt_sock = accept(serv_sock, (struct sockaddr*)&clnt_adr, &clnt_adr_size);
 		printf("Connection Request : %s:%d\n", inet_ntoa(clnt_adr.sin_addr), ntohs(clnt_adr.sin_port));
-		pthread_create(&t_id, NULL, (void*)request_handler, &clnt_sock);
+		thr_id = pthread_create(&t_id, NULL, (void*)request_handler, &clnt_sock);
+		if (thr_id < 0) {
+			perror("thread create error : ");
+			exit(0);
+		}
+		// t_id에 해당하는 스레드가 종료되면 자원을 해제한다. 
 		pthread_detach(t_id);
 	}
 	close(serv_sock);
@@ -69,15 +67,18 @@ int* request_handler(void *arg)
 	char method[10];
 	char ct[15];
 	char file_name[30];
+	char file_path[30] = "example/";
+
+	printf("Request Handler Function Call\n");
 	
 	// fdopen - 파일 기술자에서 파일 포인터를 생성하는 함수
 	clnt_read = fdopen(clnt_sock, "r");
 	clnt_write = fdopen(dup(clnt_sock), "w");
 
-	// fgets - 문자열 기반 출력 함수
+
+	// fgets - 파일 포인터가 가리키는 파일에서 정수 n으로 지정한 길이보다 하나 적게 문자열을 읽어 s에 저장합니다
 	fgets(req_line, SMALL_BUF, clnt_read);
-	
-	printf("%s", req_line);
+	printf("Request line: %s\n", req_line);
 
 	// strstr - 문자열에서 특정 문자열의 시작 위치를 알려주는 함수
 	if (strstr(req_line, "HTTP/") == NULL)
@@ -89,9 +90,32 @@ int* request_handler(void *arg)
 	 }
 	
 	// strtok - 문자열에서 token을 뽑아내는 함수. 두번째 수행부터는 NULL을 넣고, 더이상 없으면 NULL 반환
+
 	strcpy(method, strtok(req_line, " /"));
-	strcpy(file_name, strtok(NULL, " /"));
+	printf("method is: %s\n", method);
+
+	strcpy(file_name, strtok(NULL, " "));
+
+	if (strcmp(file_name, "/") == 0){
+		strcpy(file_name, "index.html");
+	}
+
+	printf("file name is: %s\n", file_name);
+
+	char full_path[50];
+	strcpy(full_path, file_path);
+	strcat(full_path, file_name);
+	printf("full path is: %s\n", full_path);
+	FILE *exist_check;
+
+
+	if ((exist_check = fopen(full_path, "r")) == NULL ){
+		strcpy(file_name, "error.html");
+	}
+
 	strcpy(ct, content_type(file_name));
+	
+
 	if (strcmp(method, "GET") != 0)
 	{
 		send_error(clnt_write);
@@ -100,8 +124,11 @@ int* request_handler(void *arg)
 		return NULL;
 	}
 
+	strcat(file_path, file_name);
+
 	fclose(clnt_read);
-	send_data(clnt_write, ct, file_name); 
+	send_data(clnt_write, ct, file_path); 
+
 }
 
 void send_data(FILE* fp, char* ct, char* file_name)
@@ -113,10 +140,13 @@ void send_data(FILE* fp, char* ct, char* file_name)
 	char buf[BUF_SIZE];
 	FILE* send_file;
 	int file_size;
+
+	printf("Send Data Function Call\n");
 	
-	
+	printf("file name: %s\n", file_name);
 
 	sprintf(cnt_type, "Content-type:%s\r\n\r\n", ct);
+
 	send_file = fopen(file_name, "r");
 	if (send_file == NULL)
 	{
@@ -130,15 +160,12 @@ void send_data(FILE* fp, char* ct, char* file_name)
 	sprintf(cnt_len, "Content-length:%d\r\n", file_size);
 	fseek(send_file, 0, SEEK_SET);
 
-	printf("file_name: %s(%dbytes)\n", file_name, file_size);
 
 	fputs(protocol, fp);
 	fputs(server, fp);
 	fputs(cnt_len, fp);
 	fputs(cnt_type, fp);
 
-	// TODO: read file data from the file and send to the client 
-	// Hint: use fread() and fwrite() 
 	int read_cnt = 0;
 	int read_size = 0;
 
@@ -148,7 +175,6 @@ void send_data(FILE* fp, char* ct, char* file_name)
 		read_size += read_cnt;
 		fwrite(buf, 1, read_cnt, fp);
 	}
-
 	fflush(fp);
 	fclose(fp);
 }
@@ -157,16 +183,18 @@ char* content_type(char* file)
 {
 	char extension[SMALL_BUF];
 	char file_name[SMALL_BUF];
+	
+
+	//printf("Content Type Function Call\n");
+
 	strcpy(file_name, file);
 	strtok(file_name, ".");
 	strcpy(extension, strtok(NULL, "."));
-	
+
 	if (!strcmp(extension, "html") || !strcmp(extension, "htm")) 
 		return "text/html";
 	else if (!strcmp(extension, "jpg") || !strcmp(extension, "jpeg"))	// added
 		return "image/jpeg";
-	else if (!strcmp(extension, "png"))	// added
-		return "image/png";
 	else
 		return "text/plain";
 }
@@ -177,9 +205,14 @@ void send_error(FILE* fp)
 	char server[] = "Server:Linux Web Server \r\n";
 	char cnt_len[] = "Content-length:2048\r\n";
 	char cnt_type[] = "Content-type:text/html\r\n\r\n";
+
+	/*
 	char content[] = "<html><head><title>NETWORK</title></head>"
-	       "<body><font size=+5><br>���� �߻�! ��û ���ϸ� �� ��û ��� Ȯ��!"
+	       "<body><font size=+5><br><���� �߻�! ��û ���ϸ� �� ��û ��� Ȯ��!>"
 		   "</font></body></html>";
+	*/
+
+	//printf("Send Error Function Call\n");
 
 	fputs(protocol, fp);
 	fputs(server, fp);
@@ -189,7 +222,9 @@ void send_error(FILE* fp)
 }
 
 void error_handling(char* message)
-{
+{	
+	printf("Error Handling Function Call\n");
+
 	fputs(message, stderr);
 	fputc('\n', stderr);
 	exit(1);
