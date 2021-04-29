@@ -56,6 +56,8 @@ int main(int argc, char *argv[])
 		pthread_create(&t_id, NULL, (void*)request_handler, &clnt_sock);
 		pthread_detach(t_id);
 	}
+	
+
 	close(serv_sock);
 	return 0;
 }
@@ -121,8 +123,6 @@ void send_data(FILE* fp, char* ct, char* file_name)
 	sprintf(cnt_len, "Content-length:%d\r\n", file_size);
 	fseek(send_file, 0, SEEK_SET);
 
-	printf("file_name: %s(%dbytes)\n", file_name, file_size);
-
 	/* ��� ���� ���� */
 	fputs(protocol, fp);
 	fputs(server, fp);
@@ -155,7 +155,7 @@ char* content_type(char* file)
 	
 	if (!strcmp(extension, "html") || !strcmp(extension, "htm")) 
 		return "text/html";
-	else if (!strcmp(extension, "jpg") || !strcmp(extension, "jpeg"))	// added
+	else if (!strcmp(extension, "jpg") || !strcmp(extension, "jpeg"))
 		return "image/jpeg";
 	else
 		return "text/plain";
@@ -171,7 +171,7 @@ void send_error(FILE* fp)
 	char content[] = "<html><head><title>NETWORK</title></head>"
 	       "<body><font size=+5><br>���� �߻�! ��û ���ϸ� �� ��û ��� Ȯ��!"
 		   "</font></body></html>";
-*/
+	*/
 	fputs(protocol, fp);
 	fputs(server, fp);
 	fputs(cnt_len, fp);

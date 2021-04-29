@@ -50,7 +50,6 @@ int main(int argc, char *argv[])
 			perror("thread create error : ");
 			exit(0);
 		}
-
 		// t_id에 해당하는 스레드가 종료되면 자원을 해제한다. 
 		pthread_detach(t_id);
 	}
@@ -76,9 +75,10 @@ int* request_handler(void *arg)
 	clnt_read = fdopen(clnt_sock, "r");
 	clnt_write = fdopen(dup(clnt_sock), "w");
 
+
 	// fgets - 파일 포인터가 가리키는 파일에서 정수 n으로 지정한 길이보다 하나 적게 문자열을 읽어 s에 저장합니다
 	fgets(req_line, SMALL_BUF, clnt_read);
-	printf("request line: %s.\n", req_line);
+	printf("Request line: %s\n", req_line);
 
 	// strstr - 문자열에서 특정 문자열의 시작 위치를 알려주는 함수
 	if (strstr(req_line, "HTTP/") == NULL)
@@ -90,13 +90,32 @@ int* request_handler(void *arg)
 	 }
 	
 	// strtok - 문자열에서 token을 뽑아내는 함수. 두번째 수행부터는 NULL을 넣고, 더이상 없으면 NULL 반환
-	strcpy(method, strtok(req_line, " /"));
-	printf("method is: %s.\n", method);
 
-	strcpy(file_name, strtok(NULL, " /"));
-	printf("file name is: %s.\n", file_name);
+	strcpy(method, strtok(req_line, " /"));
+	printf("method is: %s\n", method);
+
+	strcpy(file_name, strtok(NULL, " "));
+
+	if (strcmp(file_name, "/") == 0){
+		strcpy(file_name, "index.html");
+	}
+
+	printf("file name is: %s\n", file_name);
+
+	char full_path[50];
+	strcpy(full_path, file_path);
+	strcat(full_path, file_name);
+	printf("full path is: %s\n", full_path);
+	FILE *exist_check;
+
+
+	if ((exist_check = fopen(full_path, "r")) == NULL ){
+		strcpy(file_name, "error.html");
+	}
 
 	strcpy(ct, content_type(file_name));
+	
+
 	if (strcmp(method, "GET") != 0)
 	{
 		send_error(clnt_write);
@@ -109,7 +128,7 @@ int* request_handler(void *arg)
 
 	fclose(clnt_read);
 	send_data(clnt_write, ct, file_path); 
-	printf("\n\n request done! \n\n");
+
 }
 
 void send_data(FILE* fp, char* ct, char* file_name)
@@ -135,26 +154,17 @@ void send_data(FILE* fp, char* ct, char* file_name)
 		return;
 	}
 
-	printf("file_name: %s \n", file_name);
-
 	// GET file size and construct header for Content-length
 	fseek(send_file, 0, SEEK_END);
 	file_size = ftell(send_file);
 	sprintf(cnt_len, "Content-length:%d\r\n", file_size);
 	fseek(send_file, 0, SEEK_SET);
 
-	/* ��� ���� ���� */
+
 	fputs(protocol, fp);
 	fputs(server, fp);
 	fputs(cnt_len, fp);
 	fputs(cnt_type, fp);
-
-	/* ��û ������ ���� 
-	while (fgets(buf, BUF_SIZE, send_file) != NULL) 
-	{
-		fputs(buf, fp);
-		fflush(fp);
-	}*/
 
 	int read_cnt = 0;
 	int read_size = 0;
@@ -173,22 +183,18 @@ char* content_type(char* file)
 {
 	char extension[SMALL_BUF];
 	char file_name[SMALL_BUF];
+	
 
-	printf("Content Type Function Call\n");
+	//printf("Content Type Function Call\n");
 
 	strcpy(file_name, file);
 	strtok(file_name, ".");
 	strcpy(extension, strtok(NULL, "."));
 
-	printf("	extension is %s\n", extension);
-
 	if (!strcmp(extension, "html") || !strcmp(extension, "htm")) 
 		return "text/html";
 	else if (!strcmp(extension, "jpg") || !strcmp(extension, "jpeg"))	// added
-		{
-			printf("\nhi im in conternt type\n");
-			return "image/jpeg";
-		}
+		return "image/jpeg";
 	else
 		return "text/plain";
 }
@@ -206,7 +212,7 @@ void send_error(FILE* fp)
 		   "</font></body></html>";
 	*/
 
-	printf("Send Error Function Call\n");
+	//printf("Send Error Function Call\n");
 
 	fputs(protocol, fp);
 	fputs(server, fp);
