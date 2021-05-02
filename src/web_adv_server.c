@@ -9,6 +9,9 @@
 #define BUF_SIZE 1024
 #define SMALL_BUF 100
 
+#define TRUE 1
+#define FALSE 0
+
 int* request_handler(void* arg);
 void send_data(FILE* fp, char* ct, char* file_name);
 char* content_type(char* file);
@@ -20,69 +23,98 @@ int main(int argc, char *argv[])
 	int serv_sock, clnt_sock;
 	struct sockaddr_in serv_adr, clnt_adr;
 	int clnt_adr_size;
+
+	int option;
+	socklen_t optlen;
 	char buf[BUF_SIZE];
-	pthread_t t_id;	
+	pthread_t t_id;
+	int status;
 
-	int thr_id;
-
-	if (argc !=2) {
+	if (argc != 2) {
 		printf("Usage : %s <port>\n", argv[0]);
 		exit(1);
 	}
 	
 	serv_sock = socket(PF_INET, SOCK_STREAM, 0);
+	optlen = sizeof(option);
+	option = TRUE;	
+	setsockopt(serv_sock, SOL_SOCKET, SO_REUSEADDR, &option, optlen);
+
 	memset(&serv_adr, 0, sizeof(serv_adr));
-	serv_adr.sin_family = AF_INET;
+	serv_adr.sin_family = PF_INET;
+	/* INADDR_ANY: 서버의 IP 주소를 자동으로 찾아서 대입해주는 함수
+	 *   NIC(Network Interface Controller)가 2개 이상 장착된 컴퓨터의 경우,
+	 *   특정 NIC의 IP로 지정하면, 나머지가 인식하지 못한다.
+	 */
 	serv_adr.sin_addr.s_addr = htonl(INADDR_ANY);
 	serv_adr.sin_port = htons(atoi(argv[1]));
+
 	if (bind(serv_sock, (struct sockaddr*)&serv_adr, sizeof(serv_adr)) == -1)
 		error_handling("bind() error");
+	
 	if (listen(serv_sock, 20) == -1)
 		error_handling("listen() error");
+
+	printf("-----------------------------\n");
+	printf("Web Server Now Starting...\n");
+	printf("Address: %s & Port: %d\n", inet_ntoa(serv_adr.sin_addr), ntohs(serv_adr.sin_port));
+	printf("-----------------------------\n\n");
 
 	while (1)
 	{
 		clnt_adr_size = sizeof(clnt_adr);
 		clnt_sock = accept(serv_sock, (struct sockaddr*)&clnt_adr, &clnt_adr_size);
-		printf("Connection Request : %s:%d\n", inet_ntoa(clnt_adr.sin_addr), ntohs(clnt_adr.sin_port));
-		thr_id = pthread_create(&t_id, NULL, (void*)request_handler, &clnt_sock);
-		if (thr_id < 0) {
-			perror("thread create error : ");
-			exit(0);
-		}
+		printf("%d - [Connect] Request : %s:%d\n", clnt_sock, inet_ntoa(clnt_adr.sin_addr), ntohs(clnt_adr.sin_port));
+		
+		status = pthread_create(&t_id, NULL, (void*)request_handler, &clnt_sock);
+		if (status != 0) 
+			error_handling("pthread_create() error");
+		
+
+		printf("%d - [Creat] Thread with Client Socket's Descriptor\n", clnt_sock);
+
 		// t_id에 해당하는 스레드가 종료되면 자원을 해제한다. 
-		pthread_detach(t_id);
+		status = pthread_detach(t_id);
+		if (status != 0) 
+			error_handling("pthread_detach() error");
+		
 	}
+
 	close(serv_sock);
 	return 0;
 }
 
 int* request_handler(void *arg)
 {
-	int clnt_sock = *((int*)arg);
+	int clnt_sock = *((int*)arg);	
 	char req_line[SMALL_BUF];
 	FILE* clnt_read;
 	FILE* clnt_write;
+	FILE* exist_check;
 	
 	char method[10];
 	char ct[15];
 	char file_name[30];
-	char file_path[30] = "example/";
-
-	printf("Request Handler Function Call\n");
+	char file_path[60];
 	
+	printf("%d - [Start] Request Handler Function\n", clnt_sock);
+
 	// fdopen - 파일 기술자에서 파일 포인터를 생성하는 함수
 	clnt_read = fdopen(clnt_sock, "r");
+	if (!clnt_read) 
+		perror("open");
+	
 	clnt_write = fdopen(dup(clnt_sock), "w");
-
-
+	if (!clnt_write) 
+		perror("write");
+	
 	// fgets - 파일 포인터가 가리키는 파일에서 정수 n으로 지정한 길이보다 하나 적게 문자열을 읽어 s에 저장합니다
 	fgets(req_line, SMALL_BUF, clnt_read);
-	printf("Request line: %s\n", req_line);
+	req_line[strlen(req_line) - 1] = NULL;
+	printf("%d - [Info] First Request Line : %s\n", clnt_sock, req_line);
 
 	// strstr - 문자열에서 특정 문자열의 시작 위치를 알려주는 함수
-	if (strstr(req_line, "HTTP/") == NULL)
-	{
+	if (strstr(req_line, "HTTP/") == NULL) {
 		send_error(clnt_write);
 		fclose(clnt_read);
 		fclose(clnt_write);
@@ -90,45 +122,33 @@ int* request_handler(void *arg)
 	 }
 	
 	// strtok - 문자열에서 token을 뽑아내는 함수. 두번째 수행부터는 NULL을 넣고, 더이상 없으면 NULL 반환
-
 	strcpy(method, strtok(req_line, " /"));
-	printf("method is: %s\n", method);
-
-	strcpy(file_name, strtok(NULL, " "));
-
-	if (strcmp(file_name, "/") == 0){
-		strcpy(file_name, "index.html");
-	}
-
-	printf("file name is: %s\n", file_name);
-
-	char full_path[50];
-	strcpy(full_path, file_path);
-	strcat(full_path, file_name);
-	printf("full path is: %s\n", full_path);
-	FILE *exist_check;
-
-
-	if ((exist_check = fopen(full_path, "r")) == NULL ){
-		strcpy(file_name, "error.html");
-	}
-
-	strcpy(ct, content_type(file_name));
-	
-
-	if (strcmp(method, "GET") != 0)
-	{
+	if (strcmp(method, "GET") != 0) {
 		send_error(clnt_write);
 		fclose(clnt_read);
 		fclose(clnt_write);
 		return NULL;
 	}
 
+	strcpy(file_name, strtok(NULL, " "));
+	if (strcmp(file_name, "/") == 0) strcpy(file_name, "/index.html");
+	if (strstr(file_name, "//") != NULL) strcpy(file_name, "/error.html");
+
+	strcpy(file_path, "public");
 	strcat(file_path, file_name);
 
-	fclose(clnt_read);
-	send_data(clnt_write, ct, file_path); 
+	exist_check = fopen(file_path, "r");
+	if (exist_check == NULL) {
+		strcpy(file_name, "/error.html");
+		strcpy(file_path, "public/error.html");
+	}
+	
+	strcpy(ct, content_type(file_name));
 
+	fclose(clnt_read);
+	send_data(clnt_write, ct, file_path);
+
+	printf("%d - [End] Request Handler Function\n", clnt_sock);
 }
 
 void send_data(FILE* fp, char* ct, char* file_name)
@@ -141,10 +161,7 @@ void send_data(FILE* fp, char* ct, char* file_name)
 	FILE* send_file;
 	int file_size;
 
-	printf("Send Data Function Call\n");
-	
-	printf("file name: %s\n", file_name);
-
+	// 서식(format)을 지정하여 문자열을 만든다.
 	sprintf(cnt_type, "Content-type:%s\r\n\r\n", ct);
 
 	send_file = fopen(file_name, "r");
@@ -159,7 +176,6 @@ void send_data(FILE* fp, char* ct, char* file_name)
 	file_size = ftell(send_file);
 	sprintf(cnt_len, "Content-length:%d\r\n", file_size);
 	fseek(send_file, 0, SEEK_SET);
-
 
 	fputs(protocol, fp);
 	fputs(server, fp);
@@ -184,9 +200,6 @@ char* content_type(char* file)
 	char extension[SMALL_BUF];
 	char file_name[SMALL_BUF];
 	
-
-	//printf("Content Type Function Call\n");
-
 	strcpy(file_name, file);
 	strtok(file_name, ".");
 	strcpy(extension, strtok(NULL, "."));
@@ -206,14 +219,6 @@ void send_error(FILE* fp)
 	char cnt_len[] = "Content-length:2048\r\n";
 	char cnt_type[] = "Content-type:text/html\r\n\r\n";
 
-	/*
-	char content[] = "<html><head><title>NETWORK</title></head>"
-	       "<body><font size=+5><br><���� �߻�! ��û ���ϸ� �� ��û ��� Ȯ��!>"
-		   "</font></body></html>";
-	*/
-
-	//printf("Send Error Function Call\n");
-
 	fputs(protocol, fp);
 	fputs(server, fp);
 	fputs(cnt_len, fp);
@@ -224,7 +229,6 @@ void send_error(FILE* fp)
 void error_handling(char* message)
 {	
 	printf("Error Handling Function Call\n");
-
 	fputs(message, stderr);
 	fputc('\n', stderr);
 	exit(1);
